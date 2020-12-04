@@ -1,0 +1,650 @@
+---
+title: "Group 5 - Obesity Prediction"
+output: html_notebook
+---
+```{r}
+#Create a function 'confusion_matrix' that will automatically factor the input variables for when we input them into our confusion matrix.
+
+confusion_matrix <- function(x,y) {
+  #Read necessary libraries
+  library(caret)
+  library(e1071)
+  #Test data set = x, prediction being tested = y
+  confusionMatrix(factor(x), factor(y))
+}
+```
+
+```{r}
+data <- read.csv("C:\\Users\\Daniel\\Documents\\R Codes\\Math 3637\\Group Project - Obesity\\ObesityDataSet_raw_and_data_sinthetic.csv", header = TRUE, stringsAsFactors = FALSE)
+
+#Change to numeric dummy/binary variables
+
+#Gender
+data$Gender <- ifelse(data$Gender=="Male", 1, 0)
+
+#Family history with overweight 
+data$family_history_with_overweight <- ifelse(data$family_history_with_overweight=="yes", 1, 0) #Family History
+
+
+#Consumption of high caloric foods | FAVC
+data$FAVC <- ifelse(data$FAVC=="yes", 1, 0)
+
+
+#Consumption of food between meals | CAEC
+data$CAEC[data$CAEC == "no"] <- 0
+data$CAEC[data$CAEC == "Always"] <- 3
+data$CAEC[data$CAEC == "Sometimes"] <- 1
+data$CAEC[data$CAEC == "Frequently"] <- 2
+
+
+#Assign numbers to SMOKE
+data$SMOKE <- ifelse(data$SMOKE=="yes", 1, 0)
+
+
+#Do they monitor calorie consumption | SCC
+data$SCC <- ifelse(data$SCC=="yes", 1, 0) 
+
+
+# Frequency of Alcohol Consumption | CALC
+data$CALC[data$CALC == "no"] <- 0
+data$CALC[data$CALC == "Always"] <- 3   
+data$CALC[data$CALC == "Sometimes"] <- 1
+data$CALC[data$CALC == "Frequently"] <- 2
+
+
+#Method of Transportation | MTRANS
+data$MTRANS[data$MTRANS == "Bike"] <- 3
+data$MTRANS[data$MTRANS == "Walking"] <- 4
+data$MTRANS[data$MTRANS == "Motorbike"] <- 2
+data$MTRANS[data$MTRANS == "Automobile"] <- 1
+data$MTRANS[data$MTRANS == "Public_Transportation"] <- 0
+
+
+# Assign numbers to BMI
+data$BMI[data$BMI == "Normal_Weight"] <- 1
+data$BMI[data$BMI == "Obesity_Type_I"] <- 4
+data$BMI[data$BMI == "Obesity_Type_II"] <- 5
+data$BMI[data$BMI == "Obesity_Type_III"] <- 6
+data$BMI[data$BMI == "Overweight_Level_I"] <- 2
+data$BMI[data$BMI == "Overweight_Level_II"] <- 3
+data$BMI[data$BMI == "Insufficient_Weight"] <- 0
+
+
+#Factor the categorical variables
+data$BMI <- as.numeric(data$BMI)
+data$SCC <- factor(data$SCC)
+data$FAVC <- factor(data$FAVC)
+data$CAEC <- factor(data$CAEC)
+data$CALC <- factor(data$CALC)
+data$SMOKE <- factor(data$SMOKE)
+data$MTRANS <- factor(data$MTRANS)
+data$Gender <- factor(data$Gender)
+data$family_history_with_overweight <- factor(data$family_history_with_overweight)
+data$FCVC <- round(data$FCVC) #Round to make meaningful factors for vegetable consumption
+
+
+#Subtract 1 from all values from the FCVC to have a consistent 0 = no definition between all variables, and then factor
+data$FCVC <- data$FCVC - 1
+data$FCVC <- factor(data$FCVC)
+
+
+#Rename Variables so that they are easier to understand when working in R
+names(data)[names(data) == "FAVC"] <- "caloric_foods"
+names(data)[names(data) == "FCVC"] <- "vegetables"
+names(data)[names(data) == "NCP"] <- "number_of_meals"
+names(data)[names(data) == "CAEC"] <- "food_between_meals"
+names(data)[names(data) == "CH2O"] <- "amount_of_water"
+names(data)[names(data) == "SCC"] <- "monitors_calories"
+names(data)[names(data) == "FAF"] <- "physical_activity"
+names(data)[names(data) == "TUE"] <- "technology_activity"
+names(data)[names(data) == "CALC"] <- "alcohol"
+names(data)[names(data) == "MTRANS"] <- "method_of_transportation"
+
+#Take a summary
+summary(data)
+```
+
+```{r}
+library(caret)
+set.seed(3) # Set seed to keep results consistent across R sessions.
+trnId <- createDataPartition(data$BMI, p = 0.8, list = FALSE) # Split the data 80% training, 20% test.
+dataTrain <- data[trnId,]
+dataTest <- data[-trnId,]
+
+summary(dataTrain$BMI) # Take summaries to see if they have similar structure.
+summary(dataTrain$BMI)
+
+nrow(dataTrain) # Check lengths of the number of data points.
+nrow(dataTest)
+```
+
+
+ 
+```{r}
+# Calling the rpart package
+library(rpart)
+
+# Fitting our regression tree, using "BMI" as our response variable, all of the independent variables except weight, using our training dataset, and anova as the method
+tree1 <- rpart(BMI ~ .-Weight, data=dataTrain , method = "anova")
+tree1
+```
+```{r}
+par(mar=c(1,1,1,1))
+
+# Plotting the tree
+plot(tree1 , uniform=T, margin =0.04) 
+
+# Adding labels to the tree
+text(tree1 , use.n = TRUE)
+
+library(rpart.plot)
+
+rpart.plot(tree1)
+
+# Calculates variable importance
+vImp <- tree1$variable.importance
+
+# Taking a look at the summary
+vImp
+
+# Scaling the summary and plotting them in bar plot form
+vImp <- vImp * 100 / max(vImp)
+ind <- order(vImp)
+par(las =2) # make label text perpendicular to axis
+par(mar=c(3,8,1,1)) # increase y-axis margin.
+barplot(vImp[ind], main="", horiz=TRUE , names.arg=names(vImp[ind])) #Display the barplot
+```
+
+
+
+
+```{r}
+#Check Accuracy of Full Tree
+ yhat_tree1 <- predict(tree1, dataTest) # Provides the predictions from my tree using the test data
+ yhat_tree1rnd <- round(yhat_tree1) # Rounds my predictions to make them 0 or 1
+
+confusion_matrix(yhat_tree1rnd, dataTest$BMI)
+
+```
+
+
+```{r}
+#Create a Pruned Tree
+printcp(tree1)
+par(mar=c(4,4,3,1))
+plotcp(tree1)
+
+#From the plot we can conclude that the subtree with 14 splits is best according to the 1-SE rule
+
+treePruned <- prune(tree1, cp =  0.011263)
+
+rpart.plot(treePruned)
+
+#Check Accuracy of Full Tree
+ yhat_treePruned <- predict(treePruned, dataTest) # Provides the predictions from my tree using the test data
+ yhat_treePrunedrnd <- round(yhat_treePruned) # Rounds my predictions to make them 0 or 1
+ 
+ confusion_matrix(yhat_treePrunedrnd, dataTest$BMI)
+
+```
+
+```{r}
+par(mar=c(1,1,1,1))
+# Plotting the tree
+plot(treePruned , uniform=T, margin =0.04) 
+
+# Adding labels to the tree
+text(treePruned , use.n = TRUE)
+
+library(rpart.plot)
+
+rpart.plot(treePruned)
+
+# Calculates variable importance
+vImp <- treePruned$variable.importance
+
+# Taking a look at the summary
+vImp
+
+# Scaling the summary and plotting them in bar plot form
+vImp <- vImp * 100 / max(vImp)
+ind <- order(vImp)
+par(las =2) # make label text perpendicular to axis
+par(mar=c(3,8,1,1)) # increase y-axis margin.
+barplot(vImp[ind], main="", horiz=TRUE , names.arg=names(vImp[ind])) #Display the barplot
+```
+
+
+
+```{r}
+#Use the Bagging randomForest method
+
+library(randomForest)
+
+# Setting a seed allows us to reproduce the randomly selected cross-validation datasets, in case ourselves or another user needs to replicate our work
+set.seed(1)
+
+# Using the randomForest function with mtry set equal to the number of predictor variables in our dataset, using a response variable facepos and all the independent variables except weight.
+
+bag1 <- randomForest(formula=BMI ~ . -Weight, data= dataTrain , mtry =15, importance=TRUE)
+
+# Taking a look at the summary of our Bagging
+bag1
+```
+
+
+```{r}
+yhat_bag1 <- predict(bag1, dataTest)
+yhat_bag1rnd <- round(yhat_bag1)
+confusion_matrix(yhat_bag1rnd,dataTest$BMI )
+```
+
+
+```{r}
+#Use the Bagging randomForest method
+
+library(randomForest)
+
+# Setting a seed allows us to reproduce the randomly selected cross-validation datasets, in case ourselves or another user needs to replicate our work
+set.seed(1)
+
+# Using the randomForest function with mtry set equal to the number of predictor variables in our dataset, using a response variable facepos and all the independent variables.
+
+bag1reduced <- randomForest(formula=BMI ~ food_between_meals + family_history_with_overweight + Age , data= dataTrain , mtry =3, importance=TRUE)
+
+# Taking a look at the summary of our Bagging
+bag1reduced
+
+```
+```{r}
+yhat_bag1reduced <- predict(bag1reduced, dataTest)
+yhat_bag1reducedrnd <- round(yhat_bag1reduced)
+
+confusion_matrix(yhat_bag1reducedrnd, dataTest$BMI)
+```
+
+
+
+```{r}
+set.seed(1)
+
+randomForest1 <- randomForest(formula= BMI ~ .-Weight, data=dataTrain, mtry=4, importance=TRUE)
+randomForest1
+
+yhat_bag2 <- predict(randomForest1, dataTest)
+yhat_bag2rnd <- round(yhat_bag2)
+
+confusion_matrix(yhat_bag2rnd, dataTest$BMI)
+
+```
+```{r}
+set.seed(1)
+library(mlbench)
+library(caret)
+importance <- varImp(randomForest1, scale= TRUE)
+print(importance)
+plot(importance)
+
+library(randomForest)
+importance(randomForest1, type = 1)
+importance(randomForest1, type = 2)
+```
+
+
+
+```{r}
+library(gbm)
+
+set.seed(1)
+
+# Using the gbm function to run a Boosting model with BMI as the response variable, all independent variables, assuming a  distribution (the response is 0 or 1 ), limiting it to make 5,000 trees, and limiting each tree to 3 splits
+boost1 <- gbm(formula=BMI ~ .-Weight, data=dataTrain, distribution="gaussian", n.trees =5000, interaction.depth =1)
+
+summary(boost1)
+```
+```{r}
+yhat_boost1 <- predict(boost1, newdata=dataTest, n.trees =5000)
+
+yhat_boost1rnd <- round(yhat_boost1)
+
+#Change the 5 -1 values to a 0 to keep the number of factors consistent.
+yhat_boost1rnd[yhat_boost1rnd == -1] <- 0
+
+confusion_matrix(yhat_boost1rnd, dataTest$BMI)
+
+```
+
+#Construct and Test a GLM Model
+```{r}
+glm <- glm(formula = BMI ~ . -Weight, family = gaussian(link = "identity"), data = dataTrain)
+
+predictyhat <- predict(glm, newdata = dataTest, type = "response") # Predict the values of the Test set, using the current linear regression model.
+predictyhatrnd <- round(predictyhat) #Round the values to the closest factor
+
+summary(factor(round(predictyhat))) #Look at if values are consistent with data; there are 3 negative values that have to be adjusted to 0.
+
+predictyhatrnd[predictyhatrnd == -1] <- 0
+predictyhatrnd[predictyhatrnd == -2] <- 0
+predictyhatrnd[predictyhatrnd == -3] <- 0
+
+summary(factor(round(predictyhatrnd))) #Values are now in the correct number of factors
+
+confusion_matrix(dataTest$BMI, predictyhatrnd)
+
+# We can see that the linear regression model conducts a 24.52% accuracy.
+```
+
+#Data Clustering
+```{r}
+set.seed(1)
+
+# Doing k-means with only one random set used for step 1
+k.cluster <- kmeans(dataTrain,7, nstart =500)
+
+# Plotting the results with colored clusters
+plot(dataTrain$BMI, col=(k.cluster$cluster +1), main="K-Means Clustering Results with K=7", xlab="", ylab="", pch=20, cex=2)
+
+```
+
+
+```{r}
+# Performing hierarchical clustering using a complete linkage and Euclidean distance
+hc.complete = hclust(dist(data), method="complete")
+
+# Taking a look at the resulting dendrograms
+plot(hc.complete ,main="Complete Linkage", xlab="", sub="", cex=.9)
+
+
+#Not very useful
+```
+
+```{r}
+# Performing heirarchical clustering using a average linkage and Euclidean distance
+hc.average = hclust(dist(data), method="average")
+
+plot(hc.average , main="Average Linkage", xlab="", sub="", cex=.9)
+
+
+#Not very useful
+```
+
+```{r}
+# Performing heirarchical clustering using a single linkage and Euclidean distance
+hc.single = hclust(dist(data), method="single")
+
+plot(hc.single , main="Single Linkage", xlab="", sub="", cex=.9)
+
+
+#Not very useful
+```
+
+```{r}
+cutree(hc.complete, k=7)
+
+
+library(ape)
+plot(as.phylo(hc.complete), type = "radial")
+
+
+
+#Not very useful
+```
+
+
+```{r}
+#Dataset with most significant two variables
+data2 <- cbind(data[5],data[9])
+data2 <- as.matrix(data2)
+
+
+
+set.seed(1)
+
+# Doing k-means with only one random set used for step 1
+k.cluster <- kmeans(data2,3, nstart =500)
+
+plot(data2[,1], data2[,2])
+
+
+#Not very useful
+```
+
+```{r}
+datanum <- model.matrix(BMI ~. -1 - Weight, data = data)
+# Using minmax normalization
+vMin <- apply(datanum, 2, min)
+vMax <- apply(datanum, 2, max)
+datastan <- (datanum - matrix(vMin , nrow=nrow(datanum), ncol= ncol(datanum), byrow=TRUE)) / matrix(vMax -vMin , nrow=nrow(datanum), ncol=ncol(datanum), byrow=TRUE)
+
+# Taking a look at the standardized data
+summary(datastan)
+```
+
+
+```{r}
+library(data.tree)
+# See below for explanation
+hkmean <- function(X, k) {
+  res <- Node$new("Node 0")
+  nCount <- 0
+  tmp <- kmeans(X, 2)
+  for(i in 1:2) {
+    nCount <- nCount + 1
+    nodeA <- res$AddChild(paste("Node", nCount))
+    nodeA$members <- names(which(tmp$cluster==i))
+    nodeA$size <- length(nodeA$members)
+    nodeA$center <- tmp$centers[i,]
+  }
+
+  while(TRUE) {
+    vSize <- res$Get("size", filterFun = isLeaf)
+    if(length(vSize) >= k) {
+    break
+    }
+    maxc <- which(vSize == max(vSize))
+    nodeL <- FindNode(res , names(maxc))
+    tmp <- kmeans(X[nodeL$members ,], 2)
+    for(i in 1:2) {
+      nCount <- nCount + 1
+      nodeA <- nodeL$AddChild(paste("Node", nCount))
+      nodeA$members <- names(which(tmp$cluster==i))
+      nodeA$size <- length(nodeA$members)
+      nodeA$center <- tmp$centers[i,]
+    }
+  }
+  return(res)
+}
+```
+
+```{r}
+set.seed(1)
+res <- hkmean(datanum, 7)
+# Looking at the distribution of cluster sizes as a histogram
+vSize <- res$Get("size", filterFun = isLeaf)
+hist(vSize , br=50)
+```
+
+```{r}
+# creating a function that will calculate the distances
+find <- function(node , X) {
+  z <- node$center
+vD <- apply( (X[node$members ,] - matrix(z, nrow=node$
+  size , ncol=length(z), byrow=T))^2, 1, sum)
+iMin <- which(vD == min(vD))
+node$policy <- node$members[iMin]
+}
+
+# Gathering the representative policies
+res$Do(find , filterFun = isLeaf , X=datanum)
+vInd <- res$Get("policy", filterFun = isLeaf)
+
+# Taking a look at the results
+head(vInd , n=20)
+```
+
+```{r}
+a <- data.frame(data[1860,])
+a <- rbind(a, data[39,],data[747,], data[1965,], data[1457,], data[1114,], data[989,])
+b <- data
+a$BMI <- factor(a$BMI)
+b$BMI <- factor(data$BMI)
+summary(a)
+summary(b)
+a
+b
+
+#There is no obvious variable that is clustering the groups together. Only 5/7 of the response variables are represented with clustering. Clustering is not very good for our data set.
+
+```
+
+#Principal Component Analysis
+```{r}
+#Full data plotting
+pcpdata <- data
+
+for(i in 1:ncol(pcpdata)){
+  pcpdata[,i] <- as.numeric(pcpdata[,i])
+}
+
+pcpdata.pca <- prcomp(pcpdata, scale = TRUE)
+
+
+pca.var <- pcpdata.pca$sdev^2
+pve <- pca.var/sum(pca.var)
+plot(cumsum(pve), xlab = "Principal Component", ylab = "Cumulative Proportion of Variance Explained", ylim = c(0,1), type = 'b')
+
+biplot(pcpdata.pca, scale=0)
+
+library(pca3d)
+
+
+pcpdata$BMI[pcpdata$BMI == 1] <- "Normal_Weight"
+pcpdata$BMI[pcpdata$BMI == 4] <- "Obesity_Type_I"
+pcpdata$BMI[pcpdata$BMI == 5] <- "Obesity_Type_II"
+pcpdata$BMI[pcpdata$BMI == 6] <- "Obesity_Type_III"
+pcpdata$BMI[pcpdata$BMI == 2] <- "Overweight_Level_I"
+pcpdata$BMI[pcpdata$BMI == 3] <- "Overweight_Level_II"
+pcpdata$BMI[pcpdata$BMI == 0] <- "Insufficient_Weight"
+
+gr <- factor(pcpdata[,17])
+summary(gr)
+pca3d(pcpdata.pca, group = gr, show.ellipses = FALSE, show.plane = FALSE, show.scale= TRUE, legend = "topleft", ellipse.ci = .90)
+pca3d(pcpdata.pca, group = gr, show.ellipses = TRUE, show.plane = FALSE, show.scale= TRUE, legend = "topleft", ellipse.ci = .90)
+
+
+```
+```{r}
+pcpdatatest <- data
+#Less observation plotting
+set.seed(3) # Set seed to keep results consistent across R sessions.
+trnId <- createDataPartition(pcpdatatest$BMI, p = 0.8, list = FALSE) # Split the data 80% training, 20% test.
+pcpdataTest <- data[-trnId,]
+
+
+for(i in 1:ncol(pcpdataTest)){
+  pcpdataTest[,i] <- as.numeric(pcpdataTest[,i])
+}
+
+pcpdatatest.pca <- prcomp(pcpdataTest, scale = TRUE)
+
+
+pca.var <- pcpdatatest.pca$sdev^2
+pve <- pca.var/sum(pca.var)
+plot(cumsum(pve), xlab = "Principal Component", ylab = "Cumulative Proportion of Variance Explained", ylim = c(0,1), type = 'b')
+
+biplot(pcpdatatest.pca, scale=0)
+
+library(pca3d)
+
+
+pcpdata$BMI[pcpdata$BMI == 1] <- "Normal_Weight"
+pcpdata$BMI[pcpdata$BMI == 4] <- "Obesity_Type_I"
+pcpdata$BMI[pcpdata$BMI == 5] <- "Obesity_Type_II"
+pcpdata$BMI[pcpdata$BMI == 6] <- "Obesity_Type_III"
+pcpdata$BMI[pcpdata$BMI == 2] <- "Overweight_Level_I"
+pcpdata$BMI[pcpdata$BMI == 3] <- "Overweight_Level_II"
+pcpdata$BMI[pcpdata$BMI == 0] <- "Insufficient_Weight"
+
+gr <- factor(pcpdata[,17])
+summary(gr)
+pca3d(pcpdata.pca, group = gr, show.ellipses = TRUE, show.plane = FALSE, show.scale= TRUE, legend = "topleft", ellipse.ci = .90)
+
+```
+
+
+
+```{r}
+#Average PCA Plotting
+#Not too applicable here due to the categorical nature of our data
+pcpdata <- data
+
+for(i in 1:ncol(pcpdata)){
+  pcpdata[,i] <- as.numeric(pcpdata[,i])
+}
+pcpdata$BMI <- pcpdata$BMI +1
+pcpdata$BMI <- factor(pcpdata$BMI)
+data2 <- data.frame(row.names = c(0:6))
+data2$Age <- 0 
+data2$family_history_with_overweight <- 0 
+data2$food_between_meals <- 0 
+data2$vegetables <- 0
+data2$physical_activity <- 0 
+data2$Height <- 0
+
+
+for (i in 1:7) {
+  SevI <- pcpdata$Age[pcpdata$BMI == i]
+  data2$Age[i] <- mean(SevI) 
+  
+  SevI <- pcpdata$family_history_with_overweight[pcpdata$BMI == i]
+  data2$family_history_with_overweight[i] <- mean(SevI) 
+  
+  SevI <- pcpdata$food_between_meals[pcpdata$BMI == i]
+  data2$food_between_meals[i] <- mean(SevI) 
+  
+  SevI <- pcpdata$vegetables[pcpdata$BMI == i]
+  data2$vegetables[i] <- mean(SevI) 
+  
+  SevI <- pcpdata$physical_activity[pcpdata$BMI == i]
+  data2$physical_activity[i] <- mean(SevI)
+  
+  SevI <- pcpdata$Height[pcpdata$BMI == i]
+  data2$Height[i] <- mean(SevI) 
+  
+}
+data2
+
+data2.pca <- prcomp(data2, scale = TRUE)
+
+
+pca.var <- data2.pca$sdev^2
+pve <- pca.var/sum(pca.var)
+plot(cumsum(pve), xlab = "Principal Component", ylab = "Cumulative Proportion of Variance Explained", ylim = c(0,1), type = 'b')
+
+biplot(data2.pca, scale=0)
+row.names(data2) <- c("Insufficient_Weight", "Normal_Weight", "Overweight_Level_1", "Overweight_Level_2", "Obesity_Type_1", "Obesity_Type_2", "Obesity_Type_3")
+data2.pca <- prcomp(data2, scale = TRUE)
+
+pca3d(data2.pca, show.ellipses = FALSE, show.plane = TRUE, show.scale= TRUE, legend = "topleft", show.labels = TRUE)
+pca2d(data2.pca,group = factor(pcpdata$BMI), show.labels = TRUE, legend = "topleft")
+
+```
+
+```{r}
+#3D Plot for variable correlations
+library(rgl)
+pc <- princomp(pcpdata[,-17], cor=TRUE, scores=TRUE)
+summary(pc)
+plot(pc, type="lines")
+biplot(pc)
+plot3d(pc$scores[,1:3], col = "black")
+
+
+text3d(pc$loadings[,1:3], texts=rownames(pc$loadings), col="red")
+coords <- NULL
+for (i in 1:nrow(pc$loadings)) {
+  coords <- rbind(coords, rbind(c(0,0,0),pc$loadings[i,1:3]))
+}
+lines3d(coords, col="red", lwd=4)
+```
+
